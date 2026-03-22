@@ -2,7 +2,7 @@
 
 Agent Tools is a small utility repository for agent-assisted terminal workflows.
 
-It was created to solve a practical annoyance: when an agent is working for a while, you often end up checking the terminal over and over just to see whether the task has finished. This repository adds an explicit, opt-in completion sound so you can step away from the terminal and come back only when the work is done.
+It was created to solve a practical annoyance: when an agent is working for a while, you often end up checking the terminal over and over just to see whether the task has finished or whether it is blocked waiting for your approval. This repository adds an explicit, opt-in notification sound so you can step away from the terminal and come back only when the work is done or when the agent needs authorization to continue.
 
 This project was developed using Codex CLI.
 
@@ -17,9 +17,12 @@ The rules are intentionally simple:
 - The notification is only enabled when the user request contains the keyword `afk`.
 - `afk` is treated as an explicit opt-in flag.
 - If `afk` is not present, the agent must not run the notification script.
-- If `afk` is present, the agent must complete the requested work first and then run the notification script before sending the final response.
-- The script must run synchronously, which means the final answer should only be sent after the script finishes.
-- If the script cannot be executed, the agent should report that failure in the final response.
+- If `afk` is present and the agent is about to ask for authorization for an escalated command, it must run the notification script immediately before sending that authorization request.
+- The authorization-wait notification should only happen once per distinct approval wait, and should not repeat while the same approval is still pending.
+- If `afk` is present, the agent must run the notification script again before sending the final response after completing the requested work.
+- The authorization-wait notification does not replace the completion notification. If both events happen, both notifications should happen.
+- The script must run synchronously, which means the authorization request or final answer should only be sent after the script finishes.
+- If the script cannot be executed, the agent should report that failure in the authorization request or final response, as applicable.
 - The instructions require PowerShell and explicitly tell the agent not to use `Start-Process` for the notification step.
 - When the notification is required, the expected command is:
 
@@ -33,8 +36,10 @@ Example requests:
 - `say hello world afk`
 - `afk say hello world`
 - `afk: say hello world`
+- `afk run tests that require approval`
 
-Only the last three examples should trigger the notification.
+- Only the last four examples should trigger the notification.
+- In the last example, the notification should run before the authorization request and again before the final response if the task later completes.
 
 ## How To Add This To Your Own Project
 
@@ -44,7 +49,7 @@ You can reuse this pattern in your own repository with a fixed layout:
 2. Copy `notify-done.ps1` into that `agent-tools` folder.
 3. Create an `AGENTS.md` file at the root of your project, or append these rules to the `AGENTS.md` you already have.
 
-This matters because the completion command used by the instructions is:
+This matters because the notification command used by the instructions is:
 
 ```powershell
 & .\agent-tools\notify-done.ps1
@@ -55,20 +60,27 @@ That command assumes the script lives inside an `agent-tools` directory in the p
 A minimal example looks like this:
 
 ````md
-## Completion behavior
+## Notification behavior
 
 This rule is conditional and applies only when the current user request includes the keyword `afk`.
-Treat `afk` as an explicit opt-in flag for the completion notification script.
-If the current user request does not include `afk`, do not execute the notification script before sending the final response.
-If the current user request includes `afk`, execute the notification script SYNCHRONOUSLY before sending any final response after completing the requested work.
-When `afk` is present, the task is not complete until the script execution has finished.
-If the script cannot be executed when `afk` is present, explicitly report that failure in the final response.
+Treat `afk` as an explicit opt-in flag for the notification script.
+If the current user request does not include `afk`, do not execute the notification script at any point.
+If the current user request includes `afk` and the agent is about to ask the user to authorize an escalated command, execute the notification script SYNCHRONOUSLY immediately before sending the authorization request.
+Only notify once per distinct authorization wait.
+Do not repeatedly execute the script while waiting on the same pending approval.
+If the current user request includes `afk`, execute the notification script SYNCHRONOUSLY again before sending any final response after completing the requested work.
+When `afk` is present, the task is not complete until the completion notification script execution has finished.
+An authorization-wait notification does not replace the completion notification.
+If both events happen, the script should run once before the authorization request and once before the final response.
+If the script cannot be executed when `afk` is present, explicitly report that failure in the authorization request or final response, as applicable.
 
 Use PowerShell in the current session so the sound plays reliably.
 Do not use `Start-Process` for this notification.
-Wait for it to finish before sending the final answer when `afk` is present.
+Wait for it to finish before sending the authorization request or final response when `afk` is present.
 Do not replace this with another notification mechanism.
-Do not send the final answer first and execute it later when `afk` is present.
+The required command uses a path relative to the parent directory that contains the `agent-tools` folder.
+Do not hardcode or document any user-specific absolute path in this file.
+If the current working directory is already the `agent-tools` directory, change only the working directory context to its parent and then run the command exactly as written.
 When `afk` is present, always use this command:
 
 ```powershell
@@ -99,12 +111,12 @@ The notification script uses PowerShell and relies on `[Console]::Beep()` to pla
 
 - It is Windows-first. There is no Linux or macOS notification implementation yet.
 - It depends on the agent actually respecting `AGENTS.md`. If the agent ignores those instructions, the notification will not run.
-- It is synchronous by design, so the agent waits for the sound to finish before sending the final answer.
+- It is synchronous by design, so the agent waits for the sound to finish before sending an authorization request or the final answer.
 - Audio support depends on the terminal and execution environment. Some hosts, remote sessions, or restricted consoles may not play the melody.
 - The setup assumes the script is stored at `.\agent-tools\notify-done.ps1`, which means adopters need to keep an `agent-tools` folder at the project root if they want to use the instructions as written.
 
 ## Repository Purpose
 
-This repository is intentionally small. Its goal is not to be a full notification framework, but to provide a lightweight pattern for agent completion alerts in terminal-based workflows.
+This repository is intentionally small. Its goal is not to be a full notification framework, but to provide a lightweight pattern for agent completion and approval-wait alerts in terminal-based workflows.
 
 The project is also meant to evolve over time, both to work better in its current form and to support other environments beyond the current Windows-first setup. Contributions are welcome, and people should feel free to open improvements, extensions, and adaptations for different workflows or platforms.
