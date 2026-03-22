@@ -1,6 +1,6 @@
-# Agent Tools
+# Agent Done Notifier
 
-Agent Tools is a small utility repository for agent-assisted terminal workflows.
+Agent Done Notifier is a small utility repository for agent-assisted terminal workflows.
 
 It was created to solve a practical annoyance: when an agent is working for a while, you often end up checking the terminal over and over just to see whether the task has finished or whether it is blocked waiting for your approval. This repository adds an explicit, opt-in notification sound so you can step away from the terminal and come back only when the work is done or when the agent needs authorization to continue.
 
